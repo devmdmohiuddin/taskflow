@@ -10,6 +10,8 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyCompress from '@fastify/compress';
 import { AppModule } from './app.module';
 import { Configuration } from './config/configuration';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -51,6 +53,9 @@ async function bootstrap(): Promise<void> {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
+
+  app.useGlobalFilters(new AllExceptionsFilter());
+ app.useGlobalInterceptors(new TransformInterceptor());
 
   app.enableShutdownHooks();
 
