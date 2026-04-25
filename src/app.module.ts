@@ -5,6 +5,7 @@ import { jwtConfig } from './config/jwt.config';
 import { envValidationSchema } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { UsersModule } from './modules/users/users.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { UsersModule } from './modules/users/users.module';
     }),
     DatabaseModule,
     UsersModule,
+    AuthModule,
   ],
 })
 export class AppModule {}
