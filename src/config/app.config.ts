@@ -15,3 +15,10 @@ export const appConfig = registerAs(
     isProduction: process.env.NODE_ENV === 'production',
   }),
 );
+// import { registerAs } from '@nestjs/config';
+
+// export const appConfig = registerAs('app', () => ({
+//   nodeEnv: process.env.NODE_ENV!,
+//   port: parseInt(process.env.PORT!, 10),
+//   isProduction: process.env.NODE_ENV === 'production',
+// }));
