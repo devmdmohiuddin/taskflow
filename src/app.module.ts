@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { appConfig } from './config/app.config';
 import { jwtConfig } from './config/jwt.config';
 import { envValidationSchema } from './config/env.validation';
+import { DatabaseModule } from './database/database.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { envValidationSchema } from './config/env.validation';
         allowUnknown: true,
       },
     }),
+    DatabaseModule,
   ],
 })
 export class AppModule {}
