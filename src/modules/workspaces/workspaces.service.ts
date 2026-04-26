@@ -5,14 +5,21 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, WorkspaceRole } from '@prisma/client';
+import { ForbiddenError, subject } from '@casl/ability';
+import { accessibleBy } from '@casl/prisma';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { AddMemberDto } from './dto/add-member.dto';
+import { AbilityFactory } from '../../casl/ability.factory';
+import { Action } from '../../casl/action.enum';
 
 @Injectable()
 export class WorkspacesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly abilityFactory: AbilityFactory,
+  ) {}
 
   async create(userId: string, dto: CreateWorkspaceDto) {
     try {
@@ -39,17 +46,21 @@ export class WorkspacesService {
   }
 
   async findAllForUser(userId: string) {
-    const memberships = await this.prisma.workspaceMember.findMany({
-      where: { userId },
-      include: { workspace: true },
-      orderBy: { joinedAt: 'desc' },
+    const ability = await this.abilityFactory.createForUser(userId);
+    return this.prisma.workspace.findMany({
+      where: accessibleBy(ability, Action.Read).Workspace,
+      include: {
+        members: {
+          where: { userId },
+          select: { role: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
     });
-    return memberships.map((m) => ({ ...m.workspace, role: m.role }));
   }
 
   async findOne(userId: string, workspaceId: string) {
-    const membership = await this.assertMember(userId, workspaceId);
-
+    const ability = await this.abilityFactory.createForUser(userId);
     const workspace = await this.prisma.workspace.findUnique({
       where: { id: workspaceId },
       include: {
@@ -59,14 +70,24 @@ export class WorkspacesService {
       },
     });
     if (!workspace) throw new NotFoundException('Workspace not found');
-    return { ...workspace, role: membership.role };
+
+    ForbiddenError.from(ability)
+      .setMessage('Workspace not found')
+      .throwUnlessCan(Action.Read, subject('Workspace', workspace));
+
+    return workspace;
   }
 
   async update(userId: string, workspaceId: string, dto: UpdateWorkspaceDto) {
-    await this.assertRole(userId, workspaceId, [
-      WorkspaceRole.OWNER,
-      WorkspaceRole.ADMIN,
-    ]);
+    const ability = await this.abilityFactory.createForUser(userId);
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+    });
+    if (!workspace) throw new NotFoundException();
+    ForbiddenError.from(ability).throwUnlessCan(
+      Action.Update,
+      subject('Workspace', workspace),
+    );
     return this.prisma.workspace.update({
       where: { id: workspaceId },
       data: dto,
@@ -74,7 +95,15 @@ export class WorkspacesService {
   }
 
   async remove(userId: string, workspaceId: string) {
-    await this.assertRole(userId, workspaceId, [WorkspaceRole.OWNER]);
+    const ability = await this.abilityFactory.createForUser(userId);
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+    });
+    if (!workspace) throw new NotFoundException();
+    ForbiddenError.from(ability).throwUnlessCan(
+      Action.Delete,
+      subject('Workspace', workspace),
+    );
     await this.prisma.workspace.delete({ where: { id: workspaceId } });
     return { id: workspaceId, deleted: true };
   }
@@ -127,7 +156,9 @@ export class WorkspacesService {
     const isSelfLeave = userId === targetUserId;
 
     if (isSelfLeave && targetMembership.role === WorkspaceRole.OWNER) {
-      throw new ForbiddenException('Owner cannot leave. Transfer ownership first.');
+      throw new ForbiddenException(
+        'Owner cannot leave. Transfer ownership first.',
+      );
     }
 
     if (!isSelfLeave) {
@@ -142,11 +173,15 @@ export class WorkspacesService {
         (targetMembership.role === WorkspaceRole.OWNER ||
           targetMembership.role === WorkspaceRole.ADMIN)
       ) {
-        throw new ForbiddenException('Admins cannot remove owners or other admins');
+        throw new ForbiddenException(
+          'Admins cannot remove owners or other admins',
+        );
       }
     }
 
-    await this.prisma.workspaceMember.delete({ where: { id: targetMembership.id } });
+    await this.prisma.workspaceMember.delete({
+      where: { id: targetMembership.id },
+    });
     return { userId: targetUserId, removed: true };
   }
 
@@ -159,7 +194,9 @@ export class WorkspacesService {
     await this.assertRole(userId, workspaceId, [WorkspaceRole.OWNER]);
 
     if (role === WorkspaceRole.OWNER) {
-      throw new ForbiddenException('Use the transfer-ownership endpoint to change owner.');
+      throw new ForbiddenException(
+        'Use the transfer-ownership endpoint to change owner.',
+      );
     }
 
     const target = await this.prisma.workspaceMember.findUnique({

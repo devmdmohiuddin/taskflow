@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
+import { CaslModule } from './casl/casl.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
     UsersModule,
     AuthModule,
     WorkspacesModule,
+    CaslModule,
   ],
 })
 export class AppModule {}
