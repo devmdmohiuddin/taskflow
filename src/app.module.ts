@@ -8,6 +8,7 @@ import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { CaslModule } from './casl/casl.module';
+import { ProjectsModule } from './modules/projects/projects.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { CaslModule } from './casl/casl.module';
     AuthModule,
     WorkspacesModule,
     CaslModule,
+    ProjectsModule,
   ],
 })
 export class AppModule {}
