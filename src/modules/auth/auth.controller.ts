@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   Post,
   HttpCode,
   HttpStatus,
@@ -95,7 +96,7 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Post('me')
+  @Get('me')
   @HttpCode(HttpStatus.OK)
   me(@CurrentUser() user: AuthenticatedUser) {
     return user;
