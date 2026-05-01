@@ -3,12 +3,19 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma, Task, WorkspaceRole } from '@prisma/client';
 import { ForbiddenError, subject } from '@casl/ability';
 import { accessibleBy } from '@casl/prisma';
 import { PrismaService } from '../../database/prisma.service';
 import { AbilityFactory } from '../../casl/ability.factory';
 import { Action } from '../../casl/action.enum';
+import {
+  TaskCreatedEvent,
+  TaskUpdatedEvent,
+  TaskAssignedEvent,
+  TaskDeletedEvent,
+} from '../../events';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { ListTasksQueryDto } from './dto/list-tasks.query';
@@ -18,6 +25,7 @@ export class TasksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly abilityFactory: AbilityFactory,
+    private readonly events: EventEmitter2,
   ) {}
 
   async create(userId: string, projectId: string, dto: CreateTaskDto) {
@@ -39,7 +47,7 @@ export class TasksService {
       await this.assertWorkspaceMember(dto.assigneeId, project.workspaceId);
     }
 
-    return this.prisma.task.create({
+    const task = await this.prisma.task.create({
       data: {
         title: dto.title,
         description: dto.description,
@@ -56,6 +64,27 @@ export class TasksService {
         createdBy: { select: { id: true, email: true, name: true } },
       },
     });
+
+    this.events.emit(
+      TaskCreatedEvent.eventName,
+      new TaskCreatedEvent(task, task.workspaceId, userId),
+    );
+
+    // If created with an assignee, that's also an assignment event.
+    if (task.assigneeId) {
+      this.events.emit(
+        TaskAssignedEvent.eventName,
+        new TaskAssignedEvent(
+          task,
+          task.workspaceId,
+          userId,
+          null,
+          task.assigneeId,
+        ),
+      );
+    }
+
+    return task;
   }
 
   async findAll(userId: string, workspaceId: string, q: ListTasksQueryDto) {
@@ -143,7 +172,13 @@ export class TasksService {
       await this.assertWorkspaceMember(dto.assigneeId, task.workspaceId);
     }
 
-    return this.prisma.task.update({
+    // Compute which fields actually changed BEFORE the write,
+    // using the pre-update snapshot vs the incoming DTO.
+    const changedFields = (Object.keys(dto) as (keyof Task)[]).filter(
+      (key) => dto[key as keyof UpdateTaskDto] !== task[key],
+    );
+
+    const updated = await this.prisma.task.update({
       where: { id: taskId },
       data: dto,
       include: {
@@ -151,6 +186,27 @@ export class TasksService {
         createdBy: { select: { id: true, email: true, name: true } },
       },
     });
+
+    this.events.emit(
+      TaskUpdatedEvent.eventName,
+      new TaskUpdatedEvent(updated, updated.workspaceId, userId, changedFields),
+    );
+
+    // Reassignment is its own event in addition to the update.
+    if (changedFields.includes('assigneeId') && updated.assigneeId) {
+      this.events.emit(
+        TaskAssignedEvent.eventName,
+        new TaskAssignedEvent(
+          updated,
+          updated.workspaceId,
+          userId,
+          task.assigneeId, // previous (from the pre-update snapshot)
+          updated.assigneeId, // new
+        ),
+      );
+    }
+
+    return updated;
   }
 
   async remove(userId: string, taskId: string) {
@@ -162,6 +218,12 @@ export class TasksService {
       subject('Task', task),
     );
     await this.prisma.task.delete({ where: { id: taskId } });
+
+    this.events.emit(
+      TaskDeletedEvent.eventName,
+      new TaskDeletedEvent(taskId, task.workspaceId, userId),
+    );
+
     return { id: taskId, deleted: true };
   }
 

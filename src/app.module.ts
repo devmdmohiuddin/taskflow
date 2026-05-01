@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { appConfig } from './config/app.config';
 import { jwtConfig } from './config/jwt.config';
 import { envValidationSchema } from './config/env.validation';
@@ -22,6 +23,12 @@ import { TasksModule } from './modules/tasks/tasks.module';
         abortEarly: false,
         allowUnknown: true,
       },
+    }),
+    EventEmitterModule.forRoot({
+      wildcard: true,
+      delimiter: '.',
+      maxListeners: 20,
+      verboseMemoryLeak: true,
     }),
     DatabaseModule,
     UsersModule,
